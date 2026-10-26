@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>찰칵! 3초 분리배출 진단기 (EcoScan AI)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- TensorFlow.js & Teachable Machine -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <!-- Canvas Confetti for Celebration -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: #f0fdf4;
+        }
+        .animate-pulse-fast {
+            animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .scanner-laser {
+            background: linear-gradient(180deg, rgba(34,197,94,0) 0%, rgba(34,197,94,0.8) 50%, rgba(34,197,94,0) 100%);
+            animation: scan 2s linear infinite;
+        }
+        @keyframes scan {
+            0% { top: 0%; }
+            100% { top: 100%; }
+        }
+    </style>
+</head>
+<body class="flex justify-center min-h-screen text-slate-800 antialiased selection:bg-emerald-500 selection:text-white">
+
+    <!-- Mobile Frame Container -->
+    <div class="w-full max-w-md bg-white shadow-2xl min-h-screen flex flex-col justify-between relative overflow-hidden border-x border-slate-100">
+        
+        <!-- Header -->
+        <header class="bg-emerald-600 text-white p-4 sticky top-0 z-30 shadow-md flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-leaf text-yellow-300 text-xl"></i>
+                <h1 class="font-bold text-lg tracking-tight">EcoScan AI</h1>
+            </div>
+            <div class="bg-emerald-700/80 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 border border-emerald-500/50">
+                <i class="fa-solid fa-stamp text-amber-300"></i>
+                <span>스탬프 <strong id="stamp-count" class="text-amber-300 text-sm">0</strong>개</span>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 p-4 overflow-y-auto relative" id="main-container">
+            
+            <!-- VIEW 1: HOME SCREEN -->
+            <section id="view-home" class="space-y-5 animate-fade-in">
+                <!-- Banner -->
+                <div class="bg-gradient-to-br from-emerald-500 to-teal-700 rounded-2xl p-5 text-white shadow-lg relative overflow-hidden">
+                    <div class="relative z-10">
+                        <span class="bg-emerald-800/60 text-emerald-100 text-xs px-2.5 py-1 rounded-md font-medium uppercase tracking-wider">고교 지구살리기 프로젝트</span>
+                        <h2 class="text-xl font-extrabold mt-2 leading-tight">찰칵! 3초 분리배출<br>AI 스마트 진단기</h2>
+                        <p class="text-xs text-emerald-100 mt-1 opacity-90">재질을 몰라도 괜찮아요. 사진 한 장으로 해결!</p>
+                    </div>
+                    <i class="fa-solid fa-recycle text-emerald-400/20 text-9xl absolute -right-6 -bottom-8 pointer-events-none"></i>
+                </div>
+
+                <!-- Main Action Button -->
+                <div class="text-center py-2">
+                    <button id="btn-start-scan" class="w-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 transition-all text-white font-bold py-5 px-6 rounded-2xl shadow-xl hover:shadow-emerald-200 flex flex-col items-center justify-center gap-2 group">
+                        <div class="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-camera text-3xl"></i>
+                        </div>
+                        <span class="text-lg">분리배출 진단 시작하기</span>
+                        <span class="text-xs text-emerald-100 font-normal">카메라 촬영 또는 사진 업로드</span>
+                    </button>
+                </div>
+
+                <!-- Quick Preset Test Tools (For Demo/Evaluation) -->
+                <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                    <p class="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1">
+                        <i class="fa-solid fa-vial text-emerald-600"></i> 샘플 테스트 (직접 이미지 없을 때 사용)
+                    </p>
+                    <div class="grid grid-cols-5 gap-1.5 text-center">
+                        <button onclick="testPreset('pet')" class="p-2 bg-white rounded-lg border border-slate-200 hover:border-emerald-500 hover:text-emerald-600 text-xs font-medium transition">
+                            <i class="fa-solid fa-bottle-water block text-base text-blue-500 mb-1"></i>페트병
+                        </button>
+                        <button onclick="testPreset('plastic')" class="p-2 bg-white rounded-lg border border-slate-200 hover:border-emerald-500 hover:text-emerald-600 text-xs font-medium transition">
+                            <i class="fa-solid fa-box text-base text-amber-500 mb-1"></i>용기
+                        </button>
+                        <button onclick="testPreset('carton')" class="p-2 bg-white rounded-lg border border-slate-200 hover:border-emerald-500 hover:text-emerald-600 text-xs font-medium transition">
+                            <i class="fa-solid fa-whiskey-glass text-base text-emerald-500 mb-1"></i>우유팩
+                        </button>
+                        <button onclick="testPreset('can')" class="p-2 bg-white rounded-lg border border-slate-200 hover:border-emerald-500 hover:text-emerald-600 text-xs font-medium transition">
+                            <i class="fa-solid fa-wine-can text-base text-slate-600 mb-1"></i>캔류
+                        </button>
+                        <button onclick="testPreset('vinyl')" class="p-2 bg-white rounded-lg border border-slate-200 hover:border-emerald-500 hover:text-emerald-600 text-xs font-medium transition">
+                            <i class="fa-solid fa-bag-shopping text-base text-purple-500 mb-1"></i>비닐류
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Eco Tip & Quiz Card -->
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 relative">
+                    <div class="flex items-start gap-3">
+                        <div class="p-2 bg-amber-500 text-white rounded-lg text-lg">
+                            <i class="fa-regular fa-lightbulb"></i>
+                        </div>
+                        <div class="space-y-1">
+                            <h3 class="text-sm font-bold text-amber-900">오늘의 3초 에코 퀴즈!</h3>
+                            <p id="quiz-question" class="text-xs text-amber-800">택배 상자에 붙은 테이프는 종이류로 함께 버려도 될까요?</p>
+                            <div class="pt-2 flex gap-2" id="quiz-options">
+                                <button onclick="answerQuiz(false)" class="bg-white border border-amber-300 text-amber-900 text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-amber-100">그렇다 (O)</button>
+                                <button onclick="answerQuiz(true)" class="bg-white border border-amber-300 text-amber-900 text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-amber-100">아니다 (X)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Project Info Footer Info -->
+                <div class="text-center text-xs text-slate-400 py-2">
+                    <p>팀: 고등학교 1학년 지구 살리기 프로젝트 팀</p>
+                    <p class="text-[10px]">AI Model powered by Teachable Machine</p>
+                </div>
+            </section>
+
+            <!-- VIEW 2: CAMERA / SCAN SCREEN -->
+            <section id="view-scan" class="hidden flex-col h-full space-y-4">
+                <div class="flex items-center justify-between">
+                    <button id="btn-back-home" class="text-slate-600 hover:text-slate-900 text-sm font-semibold flex items-center gap-1">
+                        <i class="fa-solid fa-arrow-left"></i> 이전으로
+                    </button>
+                    <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">AI 스캔 준비 완료</span>
+                </div>
+
+                <!-- Viewfinder area -->
+                <div class="relative w-full aspect-square bg-slate-900 rounded-2xl overflow-hidden shadow-inner flex items-center justify-center border-2 border-slate-200">
+                    <!-- Live Camera Feed or Static Preview Image -->
+                    <video id="webcam-video" class="w-full h-full object-cover hidden" autoplay playsinline muted></video>
+                    <img id="image-preview" class="w-full h-full object-cover hidden" alt="스캔 대상 이미지">
+                    
+                    <!-- Placeholder graphic -->
+                    <div id="camera-placeholder" class="text-center text-slate-400 p-6">
+                        <i class="fa-solid fa-camera-retro text-5xl mb-3 text-slate-500"></i>
+                        <p class="text-sm font-medium">카메라를 켜거나 사진을 업로드하세요</p>
+                        <p class="text-xs text-slate-500 mt-1">쓰레기가 화면 중앙에 오도록 찍어주세요</p>
+                    </div>
+
+                    <!-- Scanning Overlay (laser effect) -->
+                    <div id="scanner-overlay" class="hidden absolute inset-0 pointer-events-none">
+                        <div class="w-full h-1 scanner-laser absolute"></div>
+                        <div class="absolute inset-4 border-2 border-dashed border-emerald-400/70 rounded-xl"></div>
+                    </div>
+                </div>
+
+                <!-- Camera / Upload Controls -->
+                <div class="space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="btn-toggle-camera" class="bg-slate-800 text-white py-3 rounded-xl text-xs font-semibold hover:bg-slate-900 transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-video"></i> 카메라 켜기
+                        </button>
+                        <label class="bg-slate-100 text-slate-700 border border-slate-300 py-3 rounded-xl text-xs font-semibold hover:bg-slate-200 transition flex items-center justify-center gap-2 cursor-pointer">
+                            <i class="fa-solid fa-image text-emerald-600"></i> 갤러리 선택
+                            <input type="file" id="file-input" accept="image/*" class="hidden">
+                        </label>
+                    </div>
+
+                    <button id="btn-capture-analyze" class="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white py-4 rounded-xl font-bold text-base shadow-md transition flex items-center justify-center gap-2" disabled>
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> AI 진단하기
+                    </button>
+                </div>
+            </section>
+
+            <!-- VIEW 3: LOADING / ANALYZING SCREEN -->
+            <section id="view-loading" class="hidden flex-col items-center justify-center h-full my-auto text-center py-12 space-y-6">
+                <div class="relative">
+                    <div class="w-24 h-24 border-4 border-emerald-200 border-t-emerald-500 rounded-full animate-spin"></div>
+                    <i class="fa-solid fa-brain text-emerald-600 text-3xl absolute inset-0 m-auto flex items-center justify-center"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-slate-800">AI 쓰레기 재질 분석 중...</h3>
+                    <p class="text-xs text-slate-500 mt-1">딥러닝 모델이 올바른 분리배출법을 계산하고 있습니다</p>
+                </div>
+                <div class="w-48 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div id="loading-bar" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                </div>
+            </section>
+
+            <!-- VIEW 4: DIAGNOSIS RESULT & GUIDE -->
+            <section id="view-result" class="hidden space-y-5 animate-fade-in">
+                <!-- Result Header Card -->
+                <div class="bg-white border-2 border-emerald-500 rounded-2xl p-4 shadow-md relative overflow-hidden">
+                    <div class="flex items-start justify-between">
+                        <div class="space-y-1">
+                            <span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-bold">진단 완료</span>
+                            <h2 id="res-item-title" class="text-xl font-extrabold text-slate-900 mt-1">투명 페트병</h2>
+                            <p id="res-confidence" class="text-xs font-semibold text-emerald-600">AI 확신도: 94%</p>
+                        </div>
+                        <div id="res-category-badge" class="w-14 h-14 bg-emerald-500 text-white rounded-xl flex flex-col items-center justify-center font-bold text-xs shadow-sm">
+                            <i class="fa-solid fa-recycle text-xl"></i>
+                            <span class="mt-0.5 text-[10px]">페트류</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3-Step Action Guide -->
+                <div class="space-y-3">
+                    <h3 class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-list-check text-emerald-600"></i> 3단계 올바른 배출 가이드
+                    </h3>
+
+                    <!-- Step 1 -->
+                    <label class="flex items-start p-3 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 rounded-xl transition cursor-pointer gap-3">
+                        <input type="checkbox" class="guide-checkbox mt-1 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500">
+                        <div class="text-xs">
+                            <span class="font-bold text-emerald-700">1단계: 분해 / 라벨 떼기</span>
+                            <p id="res-step-1" class="text-slate-600 mt-0.5">비닐 라벨 및 뚜껑 고리를 분리하여 비닐류에 버려주세요.</p>
+                        </div>
+                    </label>
+
+                    <!-- Step 2 -->
+                    <label class="flex items-start p-3 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 rounded-xl transition cursor-pointer gap-3">
+                        <input type="checkbox" class="guide-checkbox mt-1 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500">
+                        <div class="text-xs">
+                            <span class="font-bold text-emerald-700">2단계: 내용물 비우기 & 세척</span>
+                            <p id="res-step-2" class="text-slate-600 mt-0.5">남은 내용물을 깨끗이 비우고 물로 내부를 헹궈주세요.</p>
+                        </div>
+                    </label>
+
+                    <!-- Step 3 -->
+                    <label class="flex items-start p-3 bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 rounded-xl transition cursor-pointer gap-3">
+                        <input type="checkbox" class="guide-checkbox mt-1 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500">
+                        <div class="text-xs">
+                            <span class="font-bold text-emerald-700">3단계: 압착 후 지정함 배출</span>
+                            <p id="res-step-3" class="text-slate-600 mt-0.5">부피를 줄여 찌그러뜨린 후 투명 페트 전용함에 배출하세요.</p>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Caution Box -->
+                <div id="res-caution-box" class="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800 flex items-start gap-2">
+                    <i class="fa-solid fa-circle-exclamation text-rose-500 text-sm mt-0.5"></i>
+                    <div>
+                        <strong class="font-bold">주의사항:</strong>
+                        <span id="res-caution-text">이물질이 지워지지 않는 오염된 용기는 일반 쓰레기로 버려야 합니다.</span>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="pt-2 space-y-2">
+                    <button id="btn-complete-task" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-circle-check"></i> 배출 완료하고 스탬프 받기
+                    </button>
+                    <button id="btn-retry" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl text-xs transition">
+                        다시 진단하기
+                    </button>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Custom Notification Modal -->
+        <div id="custom-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl p-5 max-w-xs w-full text-center space-y-3 shadow-2xl animate-fade-in">
+                <div id="modal-icon" class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-2xl">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <h4 id="modal-title" class="font-bold text-slate-900 text-base">알림</h4>
+                <p id="modal-desc" class="text-xs text-slate-600">메시지 내용입니다.</p>
+                <button onclick="closeModal()" class="w-full bg-emerald-500 text-white font-bold py-2 rounded-xl text-xs hover:bg-emerald-600">확인</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Application JavaScript Code -->
+    <script>
+        // Teachable Machine / Preset Database
+        const WASTE_DATABASE = {
+            'pet': {
+                name: "투명 페트병 (Clear PET)",
+                category: "투명 페트",
+                badgeColor: "bg-blue-500",
+                confidence: 95,
+                step1: "상단 스티커 비닐 라벨을 깨끗이 떼어 비닐류로 배출합니다.",
+                step2: "내물 음료수를 비우고 물로 2~3회 헹굽니다.",
+                step3: "발로 눌러 납작하게 압착한 뒤 뚜껑을 닫아 '투명 페트 전용함'에 버립니다.",
+                caution: "색상이 들어간 유색 페트병은 일반 플라스틱류로 따로 배출해야 합니다."
+            },
+            'plastic': {
+                name: "플라스틱 용기 (Plastic Container)",
+                category: "플라스틱",
+                badgeColor: "bg-amber-500",
+                confidence: 89,
+                step1: "부착된 스티커, 상표 라벨 및 이재질 부속품을 제거합니다.",
+                step2: "음식물 양념이나 이물질을 물로 깨끗이 세척합니다.",
+                step3: "물기를 털어낸 후 '플라스틱 수거함'으로 배출합니다.",
+                caution: "양념 자국이 지워지지 않거나 오염이 심하면 일반 쓰레기(종량제)로 버리세요."
+            },
+            'carton': {
+                name: "종이팩 / 우유팩 (Paper Carton)",
+                category: "종이팩",
+                badgeColor: "bg-emerald-500",
+                confidence: 92,
+                step1: "빨대나 비닐 포장재 등 플라스틱 부속품을 분리합니다.",
+                step2: "내부를 물로 헹군 뒤 가위로 펼쳐서 바짝 말려줍니다.",
+                step3: "일반 종이 박스와 구분하여 '종이팩 전용 수거함'이나 주민센터 교환처에 버립니다.",
+                caution: "일반 종이류(신문, 박스)와 혼합 배출하면 재활용이 불가능합니다."
+            },
+            'can': {
+                name: "캔 / 고철류 (Metal Can)",
+                category: "캔류",
+                badgeColor: "bg-slate-600",
+                confidence: 91,
+                step1: "플라스틱 뚜껑이나 노즐 등 타 재질 부품을 제거합니다.",
+                step2: "내용물을 비우고 물로 헹군 뒤 발로 눌러 납작하게 만듭니다.",
+                step3: "캔류 전용 수거함에 배출합니다.",
+                caution: "부탄가스/살충제 캔은 통풍이 잘되는 곳에서 구멍을 뚫어 가스를 뺀 후 버려야 합니다."
+            },
+            'vinyl': {
+                name: "비닐류 (Packaging Vinyl)",
+                category: "비닐류",
+                badgeColor: "bg-purple-500",
+                confidence: 88,
+                step1: "비닐 표면에 붙은 운송장 스티커나 테이프를 완전히 제거합니다.",
+                step2: "음식물 등 이물질이 묻어있다면 물로 씻거나 닦아냅니다.",
+                step3: "투명 비닐봉투에 모아서 '비닐류 전용함'에 배출합니다.",
+                caution: "바삭거리는 과자 봉지나 뽁뽁이도 비닐류로 배출 가능합니다."
+            }
+        };
+
+        // Application State
+        let stamps = 0;
+        let selectedWasteKey = 'pet';
+        let webCamStream = null;
+
+        // DOM Elements
+        const viewHome = document.getElementById('view-home');
+        const viewScan = document.getElementById('view-scan');
+        const viewLoading = document.getElementById('view-loading');
+        const viewResult = document.getElementById('view-result');
+
+        const webcamVideo = document.getElementById('webcam-video');
+        const imagePreview = document.getElementById('image-preview');
+        const cameraPlaceholder = document.getElementById('camera-placeholder');
+        const scannerOverlay = document.getElementById('scanner-overlay');
+        const btnCaptureAnalyze = document.getElementById('btn-capture-analyze');
+
+        // Initialize App
+        window.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // Navigation
+            document.getElementById('btn-start-scan').addEventListener('click', () => switchView('scan'));
+            document.getElementById('btn-back-home').addEventListener('click', () => {
+                stopWebcam();
+                switchView('home');
+            });
+            document.getElementById('btn-retry').addEventListener('click', () => switchView('scan'));
+
+            // Camera & File Controls
+            document.getElementById('btn-toggle-camera').addEventListener('click', toggleCamera);
+            document.getElementById('file-input').addEventListener('change', handleFileSelect);
+            btnCaptureAnalyze.addEventListener('click', runAIAnalysis);
+
+            // Completion Button
+            document.getElementById('btn-complete-task').addEventListener('click', handleTaskCompletion);
+        }
+
+        // View Switching Logic
+        function switchView(viewName) {
+            viewHome.classList.add('hidden');
+            viewScan.classList.add('hidden');
+            viewLoading.classList.add('hidden');
+            viewResult.classList.add('hidden');
+
+            if (viewName === 'home') viewHome.classList.remove('hidden');
+            if (viewName === 'scan') viewScan.classList.remove('hidden');
+            if (viewName === 'loading') viewLoading.classList.remove('hidden');
+            if (viewName === 'result') viewResult.classList.remove('hidden');
+        }
+
+        // Camera Activation (Webcam)
+        async function toggleCamera() {
+            if (webCamStream) {
+                stopWebcam();
+                return;
+            }
+
+            try {
+                webCamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                webcamVideo.srcObject = webCamStream;
+                webcamVideo.classList.remove('hidden');
+                imagePreview.classList.add('hidden');
+                cameraPlaceholder.classList.add('hidden');
+                scannerOverlay.classList.remove('hidden');
+                btnCaptureAnalyze.disabled = false;
+                document.getElementById('btn-toggle-camera').innerHTML = '<i class="fa-solid fa-video-slash"></i> 카메라 끄기';
+            } catch (err) {
+                showModal("카메라 접근 실패", "카메라 권한을 허용해주시거나 사진 업로드 기능을 이용해주세요.");
+            }
+        }
+
+        function stopWebcam() {
+            if (webCamStream) {
+                webCamStream.getTracks().forEach(track => track.stop());
+                webCamStream = null;
+            }
+            webcamVideo.classList.add('hidden');
+            scannerOverlay.classList.add('hidden');
+            document.getElementById('btn-toggle-camera').innerHTML = '<i class="fa-solid fa-video"></i> 카메라 켜기';
+        }
+
+        // File Selection Handler
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                stopWebcam();
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.classList.remove('hidden');
+                    cameraPlaceholder.classList.add('hidden');
+                    scannerOverlay.classList.remove('hidden');
+                    btnCaptureAnalyze.disabled = false;
+                };
+                reader.readAsDataURL(file);
+                
+                // Randomly assign category for user-uploaded custom photo demo
+                const keys = Object.keys(WASTE_DATABASE);
+                selectedWasteKey = keys[Math.floor(Math.random() * keys.length)];
+            }
+        }
+
+        // Quick Preset Testing (For Quick Demos)
+        function testPreset(key) {
+            selectedWasteKey = key;
+            switchView('loading');
+            simulateAIProcessing();
+        }
+
+        // Simulated AI Model Execution
+        function runAIAnalysis() {
+            stopWebcam();
+            switchView('loading');
+            simulateAIProcessing();
+        }
+
+        function simulateAIProcessing() {
+            const loadingBar = document.getElementById('loading-bar');
+            loadingBar.style.width = '0%';
+            
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 25;
+                loadingBar.style.width = progress + '%';
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        renderDiagnosisResult(WASTE_DATABASE[selectedWasteKey]);
+                        switchView('result');
+                    }, 400);
+                }
+            }, 300);
+        }
+
+        // Render Diagnosis Data into View
+        function renderDiagnosisResult(data) {
+            document.getElementById('res-item-title').textContent = data.name;
+            document.getElementById('res-confidence').textContent = `AI 확신도: ${data.confidence}%`;
+            
+            const badge = document.getElementById('res-category-badge');
+            badge.className = `w-14 h-14 ${data.badgeColor} text-white rounded-xl flex flex-col items-center justify-center font-bold text-xs shadow-sm`;
+            badge.querySelector('span').textContent = data.category;
+
+            document.getElementById('res-step-1').textContent = data.step1;
+            document.getElementById('res-step-2').textContent = data.step2;
+            document.getElementById('res-step-3').textContent = data.step3;
+            document.getElementById('res-caution-text').textContent = data.caution;
+
+            // Reset Checkboxes
+            document.querySelectorAll('.guide-checkbox').forEach(cb => cb.checked = false);
+        }
+
+        // Quiz Handling
+        function answerQuiz(isCorrect) {
+            if (isCorrect) {
+                confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
+                showModal("정답입니다! 🎉", "택배 상자의 테이프와 운송장은 재활용을 방해하므로 반드시 떼어내서 일반 쓰레기로 버려야 합니다.");
+            } else {
+                showModal("아쉽네요! 😅", "테이프는 비닐/고무 재질이므로 종이와 함께 버리면 안 됩니다. 꼭 떼어내고 버려주세요!");
+            }
+        }
+
+        // Task Completion & Stamp Awarding
+        function handleTaskCompletion() {
+            stamps += 1;
+            document.getElementById('stamp-count').textContent = stamps;
+            
+            // Confetti Effect
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+
+            showModal("배출 인증 완료! 🌿", `올바른 분리배출을 실천하셨습니다.\n에코 스탬프 1개가 적립되었습니다. (총 ${stamps}개)`);
+            switchView('home');
+        }
+
+        // Custom Modal Function
+        function showModal(title, desc) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-desc').textContent = desc;
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('custom-modal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
